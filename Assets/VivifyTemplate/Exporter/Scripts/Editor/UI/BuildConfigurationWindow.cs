@@ -20,10 +20,59 @@ namespace VivifyTemplate.Exporter.Scripts.Editor.UI
 
         private Texture2D _tbsLogo;
 
+        // Asset bundle properties
+        private static readonly string _unknownBundleID = "_??";
+        private static int _assetBundleIndex;
+        private static string[] _assetBundleList;
+
         private void OnEnable()
         {
             // there has to be better way to do this lol
             _tbsLogo = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/VivifyTemplate/Exporter/Textures/TBS_trans.png");
+
+            UpdateAssetBundleList();
+        }
+
+        private void UpdateAssetBundleList()
+        {
+            // Gather the asset bundles in this project
+            string[] bundleNames = AssetDatabase.GetAllAssetBundleNames();
+
+            string targetBundleName = ProjectBundle.Value;
+
+            if(bundleNames.Length == 0)
+            {
+                // Add the unknown bundle name if none are found
+                _assetBundleList = new string[1]
+                {
+                    targetBundleName + _unknownBundleID
+                };
+                _assetBundleIndex = 0;
+            }
+            else
+            {
+                // Try to find the project prefs bundle in the list
+                // StartsWith is used since "_??" is techincally a new "bundle"
+                _assetBundleIndex = Array.FindIndex(bundleNames, x => targetBundleName.StartsWith(x));
+                bool foundBundle = _assetBundleIndex != -1;
+
+                // Copy the project asset bundles
+                _assetBundleList = new string[bundleNames.Length + (foundBundle ? 0 : 1)];
+                Array.Copy(bundleNames, _assetBundleList, bundleNames.Length);
+
+                // Add the prefs bundle name as an unknown bundle
+                if(!foundBundle)
+                {
+                    _assetBundleList[bundleNames.Length] = targetBundleName + _unknownBundleID;
+                    _assetBundleIndex = bundleNames.Length;
+                }
+            }
+        }
+
+        private void OnFocus()
+        {
+            // Update the asset bundle list when the window has focus
+            UpdateAssetBundleList();
         }
 
         private void VersionToggle(string label, BuildVersion version)
@@ -181,7 +230,33 @@ namespace VivifyTemplate.Exporter.Scripts.Editor.UI
             EditorGUILayout.LabelField("Settings", _titleStyle, GUILayout.Height(_titleStyle.fontSize * 1.5f));
 
             _compressed = EditorGUILayout.Toggle(new GUIContent("Compressed", "Whether to compress the bundle. This will take longer, but will significantly reduce file size."), _compressed);
-            ProjectBundle.Value = EditorGUILayout.TextField(new GUIContent("Bundle To Export", "Assets attached to this bundle name will be exported."), ProjectBundle.Value);
+
+            /* == BUNDLE DROPDOWN START == */
+            if (_assetBundleList == null)
+            {
+                UpdateAssetBundleList();
+            }
+            EditorGUI.BeginChangeCheck();
+            {
+                _assetBundleIndex = EditorGUILayout.Popup(new GUIContent("Bundle To Export", "Assets attached to this bundle name will be exported."), _assetBundleIndex, _assetBundleList);
+            }
+            if (EditorGUI.EndChangeCheck())
+            {
+                string selected = _assetBundleList[_assetBundleIndex];
+
+                // Remove unknown identifier when setting ProjectBundle value
+                if (selected.EndsWith(_unknownBundleID))
+                {
+                    selected = selected.Substring(0, selected.Length - _unknownBundleID.Length);
+                }
+
+                ProjectBundle.Value = selected;
+
+                // Update to remove any unknown bundles
+                UpdateAssetBundleList();
+            }
+            /* == BUNDLE DROPDOWN END == */
+
             ShouldExportBundleInfo.Value = EditorGUILayout.Toggle(new GUIContent("Export Bundle Info", "Whether to export the bundleinfo.json file."), ShouldExportBundleInfo.Value);
 
             if (ShouldExportBundleInfo.Value) {
